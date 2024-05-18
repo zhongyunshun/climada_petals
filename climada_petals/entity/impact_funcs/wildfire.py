@@ -32,12 +32,12 @@ class ImpfWildfire(ImpactFunc):
     """Impact function for wildfire."""
 
     def __init__(self, haz_type = 'WFsingle'):
-        ImpactFunc.__init__(self)
+        ImpactFunc.__init__(self, haz_type)
         self.haz_type = haz_type
         LOGGER.warning('haz_type is set to %s.', self.haz_type)
 
     @classmethod
-    def from_default_FIRMS(cls, i_half=295.01, impf_id=1):
+    def from_default_FIRMS(cls, i_half=295.01, impf_id=1, haz_type='WFsingle'):
         """ This function sets the impact curve to a sigmoid type shape, as
         common in impact modelling. We adapted the function as proposed by
         Emanuel et al. (2011) which hinges on two parameters (intercept (i_thresh)
@@ -82,7 +82,7 @@ class ImpfWildfire(ImpactFunc):
 
         """
 
-        Impf = cls()
+        Impf = cls(haz_type)
 
         Impf.id = impf_id
         Impf.name = "wildfire default 1 km"
