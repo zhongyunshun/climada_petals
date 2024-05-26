@@ -227,3 +227,6 @@ climada_petals/hazard/test/data/demo/demo_emdat_impact_data_2020.csv
 climada_petals/hazard/test/data/demo/crop_production_demo_data_yields_CHE.nc4
 climada_petals/hazard/test/data/demo/crop_production_demo_data_cultivated_area_CHE.nc4
 climada_petals/hazard/test/data/demo/atl_prob_nonames.mat
+*.tif
+climada_petals/data/gpw-v4-population-count-rev11_2020_30_sec_tif/gpw_v4_population_count_rev11_2020_30_sec.tif
+climada_petals/data/gpw-v4-population-count-rev11_2020_30_sec_tif/gpw_v4_population_count_rev11_2020_30_sec.tif
