@@ -9,7 +9,9 @@ from shapely.geometry import Point
 from scipy.spatial import cKDTree
 from typing import Tuple, List
 
-
+# If you don't have enough memory to load all FWI and fire intensity data at once, you can load and merge them for
+# shorter period like each year, and save the merged data to a file. Then, you can load the saved merged data and
+# merge them for the entire period. This way, you can avoid memory issues.
 class FireWeatherMerger:
     def __init__(self, geo_bound: Tuple[float, float, float, float], fwi_data_folder: str, fire_intensity_folder: str,
                  plot_on_map: bool = True, save_path: str = './'):
@@ -213,9 +215,9 @@ class FireWeatherMerger:
 
 # Example usage:
 geo_bound_uk = (-10, 49, 2, 61)
-fwi_folder = '../../climada_petals/data/wildfire/2001_fwi_fire_intensity_expriment'
-fire_intensity_folder = '../../climada_petals/data/wildfire/2001_fwi_fire_intensity_expriment/fire_intensity_csv/'
-save_path = '../../climada_petals/data/wildfire/intermediate/'
+fwi_folder = '../../climada_petals/data/wildfire/copernicus_fwi/'
+fire_intensity_folder = '../../climada_petals/data/wildfire/nasa_fire_intensity/'
+save_path = '../../climada_petals/data/wildfire/output/'
 
 merger = FireWeatherMerger(geo_bound_uk, fwi_folder, fire_intensity_folder, plot_on_map=True, save_path=save_path)
 merged_gdf = merger.run()
