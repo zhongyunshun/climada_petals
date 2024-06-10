@@ -98,10 +98,10 @@ class FireWeatherMerger:
             gpd.GeoDataFrame: Merged GeoDataFrame with nearest neighbors.
         """
         # Uncomment the following three lines to eliminate warnings about CRS
-        # df1 = df1.to_crs("EPSG:27700")
-        # df2 = df2.to_crs("EPSG:27700")
+        # df1 = df1.to_crs("EPSG:4326")
+        # df2 = df2.to_crs("EPSG:4326")
 
-        merged_subdf = gpd.sjoin_nearest(df1, df2, how='left')
+        merged_subdf = gpd.sjoin_nearest(df1, df2, how='left', distance_col='distance')
         merged_subdf['date'] = date
         # return merged_subdf.to_crs("EPSG:4326")
         return merged_subdf
@@ -225,4 +225,4 @@ merged_gdf = merger.run()
 # convert date to string because GeoPackage driver does not support the datetime.date type directly
 merged_gdf['date'] = merged_gdf['date'].astype(str)
 merged_gdf.drop(columns=['index_right', 'scan', 'track', 'acq_time', 'version', 'type'], inplace=True)
-merged_gdf.to_file(os.path.join(save_path, 'merged_gdf'), driver='GPKG')
+merged_gdf.to_file(os.path.join(save_path, 'merged_gdf2'), driver='GPKG')
