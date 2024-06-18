@@ -214,9 +214,11 @@ class FireWeatherMerger:
 
 
 # Example usage:
-geo_bound_uk = (-10, 49, 2, 61)
+geo_bound_uk = (-9, 34, 32, 72)
 fwi_folder = '../../climada_petals/data/wildfire/copernicus_fwi/'
 fire_intensity_folder = '../../climada_petals/data/wildfire/nasa_fire_intensity/'
+# fwi_folder = '../../climada_petals/data/wildfire/2001_fwi_fire_intensity_expriment/'
+# fire_intensity_folder = '../../climada_petals/data/wildfire/2001_fwi_fire_intensity_expriment/fire_intensity_csv/'
 save_path = '../../climada_petals/data/wildfire/output/'
 
 merger = FireWeatherMerger(geo_bound_uk, fwi_folder, fire_intensity_folder, plot_on_map=True, save_path=save_path)
@@ -225,4 +227,4 @@ merged_gdf = merger.run()
 # convert date to string because GeoPackage driver does not support the datetime.date type directly
 merged_gdf['date'] = merged_gdf['date'].astype(str)
 merged_gdf.drop(columns=['index_right', 'scan', 'track', 'acq_time', 'version', 'type'], inplace=True)
-merged_gdf.to_file(os.path.join(save_path, 'merged_gdf2'), driver='GPKG')
+merged_gdf.to_file(os.path.join(save_path, 'merged_eu_2001_gdf'), driver='GPKG')
