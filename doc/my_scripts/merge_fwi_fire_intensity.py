@@ -14,7 +14,7 @@ from typing import Tuple, List
 # merge them for the entire period. This way, you can avoid memory issues.
 class FireWeatherMerger:
     def __init__(self, geo_bound: Tuple[float, float, float, float], fwi_data_folder: str, fire_intensity_folder: str,
-                 plot_on_map: bool = True, save_path: str = './'):
+                 plot_on_map: bool = True, how: str = 'left', save_path: str = './'):
         """
         Initializes the FireWeatherMerger class with given parameters.
 
@@ -24,6 +24,7 @@ class FireWeatherMerger:
             fire_intensity_folder (str): Path to the folder containing fire intensity data files.
             plot_on_map (bool): Whether to plot the data on a map. Defaults to True.
             save_path (str): Path to save the merged data and plots. Defaults to './'.
+            how (str): Method to use for the spatial join. Defaults to 'left'. Can be 'left', 'right', or 'inner'.
         """
         self.geo_bound = geo_bound
         self.fwi_data_folder = fwi_data_folder
@@ -31,6 +32,7 @@ class FireWeatherMerger:
         self.plot_on_map = plot_on_map
         self.save_path = save_path
         self.merged_gdf = None
+        self.how = how
 
     @staticmethod
     def ensure_geodataframe(df, crs: str = "EPSG:4326") -> gpd.GeoDataFrame:
@@ -85,7 +87,7 @@ class FireWeatherMerger:
         return gdf
 
     @staticmethod
-    def find_nearest_sjoin(df1: gpd.GeoDataFrame, df2: gpd.GeoDataFrame, date: pd.Timestamp) -> gpd.GeoDataFrame:
+    def find_nearest_sjoin(df1: gpd.GeoDataFrame, df2: gpd.GeoDataFrame, date: pd.Timestamp, how: str) -> gpd.GeoDataFrame:
         """
         Finds the nearest neighbors between two GeoDataFrames using spatial join based on coordinates.
 
@@ -93,6 +95,7 @@ class FireWeatherMerger:
             df1 (gpd.GeoDataFrame): First GeoDataFrame.
             df2 (gpd.GeoDataFrame): Second GeoDataFrame.
             date (pd.Timestamp): Date for the data being merged.
+            how (str): Method to use for the spatial join. Can be 'left', 'right', or 'inner'.
 
         Returns:
             gpd.GeoDataFrame: Merged GeoDataFrame with nearest neighbors.
@@ -101,7 +104,7 @@ class FireWeatherMerger:
         # df1 = df1.to_crs("EPSG:4326")
         # df2 = df2.to_crs("EPSG:4326")
 
-        merged_subdf = gpd.sjoin_nearest(df1, df2, how='left', distance_col='distance')
+        merged_subdf = gpd.sjoin_nearest(df1, df2, how=how, distance_col='distance')
         merged_subdf['date'] = date
         # return merged_subdf.to_crs("EPSG:4326")
         return merged_subdf
@@ -163,7 +166,7 @@ class FireWeatherMerger:
 
                 # Choose one of the following methods to find the nearest neighbors
                 # merged_dfs.append(self.find_nearest_kdtree(fire_subset, fwi_subset, date))
-                merged_dfs.append(self.find_nearest_sjoin(fire_subset, fwi_subset, date))
+                merged_dfs.append(self.find_nearest_sjoin(fire_subset, fwi_subset, date, self.how))
 
         self.merged_gdf = pd.concat(merged_dfs, ignore_index=True)
 
@@ -215,16 +218,16 @@ class FireWeatherMerger:
 
 # Example usage:
 geo_bound_uk = (-9, 34, 32, 72)
-fwi_folder = '../../climada_petals/data/wildfire/copernicus_fwi/'
+fwi_folder = '../../climada_petals/data/wildfire/copernicus_fwi/interpolated25/'
 fire_intensity_folder = '../../climada_petals/data/wildfire/nasa_fire_intensity/'
 # fwi_folder = '../../climada_petals/data/wildfire/2001_fwi_fire_intensity_expriment/'
 # fire_intensity_folder = '../../climada_petals/data/wildfire/2001_fwi_fire_intensity_expriment/fire_intensity_csv/'
 save_path = '../../climada_petals/data/wildfire/output/'
 
-merger = FireWeatherMerger(geo_bound_uk, fwi_folder, fire_intensity_folder, plot_on_map=True, save_path=save_path)
+merger = FireWeatherMerger(geo_bound_uk, fwi_folder, fire_intensity_folder, plot_on_map=True,  how='right', save_path=save_path)
 merged_gdf = merger.run()
 
 # convert date to string because GeoPackage driver does not support the datetime.date type directly
 merged_gdf['date'] = merged_gdf['date'].astype(str)
 merged_gdf.drop(columns=['index_right', 'scan', 'track', 'acq_time', 'version', 'type'], inplace=True)
-merged_gdf.to_file(os.path.join(save_path, 'merged_eu_2001_gdf'), driver='GPKG')
+merged_gdf.to_file(os.path.join(save_path, 'merged_eu_right_gdf'), driver='GPKG')
