@@ -13,6 +13,7 @@ from typing import Tuple, List
 # shorter period like each year, and save the merged data to a file. Then, you can load the saved merged data and
 # merge them for the entire period. This way, you can avoid memory issues.
 class FireWeatherMerger:
+    file_extensions = ['.grib', '.csv', '.nc']
     def __init__(self, geo_bound: Tuple[float, float, float, float], fwi_data_folder: str, fire_intensity_folder: str,
                  plot_on_map: bool = True, how: str = 'left', save_path: str = './'):
         """
@@ -54,14 +55,12 @@ class FireWeatherMerger:
             df.set_crs(crs, inplace=True)
         return df
 
-    def load_data(self, folder: str, file_extension: str, datatype: str) -> gpd.GeoDataFrame:
+    def load_data(self, folder: str) -> gpd.GeoDataFrame:
         """
         Loads data from the specified folder and filters it based on the geographic boundaries.
-        One folder must only contain one type of data (FWI or fire intensity).
+        One folder must only contain one type of data (e.g., '.grib', '.csv', or '.nc').
         Args:
             folder (str): Path to the folder containing data files.
-            file_extension (str): File extension to look for (e.g., '.grib', '.csv').
-            datatype (str): Whether the data being loaded is FWI data 'fwi' or fire intensity data 'fire_intensity'.
 
         Returns:
             gpd.GeoDataFrame: Filtered GeoDataFrame.
@@ -69,14 +68,17 @@ class FireWeatherMerger:
 
         dfs = []
         for file in os.listdir(folder):
-            if file.endswith(file_extension) and not file.startswith('._'):
-                if datatype == 'fwi':
-                    ds = xr.open_dataset(os.path.join(folder, file), engine='cfgrib')
-                    df = ds.to_dataframe()
-                elif datatype == 'fire_intensity':
-                    df = pd.read_csv(os.path.join(folder, file))
+            file_path = os.path.join(folder, file)
+            file_extension = os.path.splitext(file)[1]
+
+            if file_extension in self.file_extensions and not file.startswith('._'):
+                if file_extension in ['.grib', '.nc']:
+                    ds = xr.open_dataset(file_path, engine='cfgrib' if file_extension == '.grib' else None)
+                    df = ds.to_dataframe().reset_index()
+                elif file_extension in ['.csv']:
+                    df = pd.read_csv(file_path)
                 else:
-                    raise ValueError("Invalid datatype. Choose 'fwi' or 'fire_intensity'.")
+                    raise ValueError(f"Unsupported file extension: {file_extension}")
 
                 df = df[(df['longitude'] >= self.geo_bound[0]) & (df['longitude'] <= self.geo_bound[2]) &
                         (df['latitude'] >= self.geo_bound[1]) & (df['latitude'] <= self.geo_bound[3])]
@@ -140,8 +142,8 @@ class FireWeatherMerger:
         Returns:
             gpd.GeoDataFrame: Merged GeoDataFrame.
         """
-        fwi_gdf = self.load_data(self.fwi_data_folder, '.grib', datatype='fwi')
-        fire_intensity_gdf = self.load_data(self.fire_intensity_folder, '.csv', datatype='fire_intensity')
+        fwi_gdf = self.load_data(self.fwi_data_folder)
+        fire_intensity_gdf = self.load_data(self.fire_intensity_folder)
 
         # 'Time' in fwi_gdf is index so reset it to a column
         fwi_gdf.reset_index(inplace=True)
@@ -218,16 +220,20 @@ class FireWeatherMerger:
 
 # Example usage:
 geo_bound_uk = (-9, 34, 32, 72)
-fwi_folder = '../../climada_petals/data/wildfire/copernicus_fwi/interpolated25/'
+geo_bound_canada = (-141, 42, -52, 83)
+geo_bound_usa = (-125, 24, -66, 49)
+geo_bound_eu = (-31, 34, 40, 72)
+
+fwi_folder = '../../climada_petals/data/wildfire/copernicus_fwi/interpolated25_netcdf/'
 fire_intensity_folder = '../../climada_petals/data/wildfire/nasa_fire_intensity/'
 # fwi_folder = '../../climada_petals/data/wildfire/2001_fwi_fire_intensity_expriment/'
 # fire_intensity_folder = '../../climada_petals/data/wildfire/2001_fwi_fire_intensity_expriment/fire_intensity_csv/'
 save_path = '../../climada_petals/data/wildfire/output/'
 
-merger = FireWeatherMerger(geo_bound_uk, fwi_folder, fire_intensity_folder, plot_on_map=True,  how='right', save_path=save_path)
+merger = FireWeatherMerger(geo_bound_eu, fwi_folder, fire_intensity_folder, plot_on_map=True,  how='right', save_path=save_path)
 merged_gdf = merger.run()
 
 # convert date to string because GeoPackage driver does not support the datetime.date type directly
 merged_gdf['date'] = merged_gdf['date'].astype(str)
 merged_gdf.drop(columns=['index_right', 'scan', 'track', 'acq_time', 'version', 'type'], inplace=True)
-merged_gdf.to_file(os.path.join(save_path, 'merged_eu_right_gdf'), driver='GPKG')
+merged_gdf.to_file(os.path.join(save_path, 'intfwi_merged_eu_right_gdf'), driver='GPKG')
