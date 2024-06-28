@@ -8,6 +8,9 @@ import contextily as ctx
 from shapely.geometry import Point
 from scipy.spatial import cKDTree
 from typing import Tuple, List
+import time
+import warnings
+warnings.filterwarnings("ignore")
 
 # If you don't have enough memory to load all FWI and fire intensity data at once, you can load and merge them for
 # shorter period like each year, and save the merged data to a file. Then, you can load the saved merged data and
@@ -73,8 +76,10 @@ class FireWeatherMerger:
 
             if file_extension in self.file_extensions and not file.startswith('._'):
                 if file_extension in ['.grib', '.nc']:
-                    ds = xr.open_dataset(file_path, engine='cfgrib' if file_extension == '.grib' else None)
-                    df = ds.to_dataframe().reset_index()
+                    df = xr.open_dataset(file_path)
+                    df = df.to_dataframe().reset_index()
+                    # FWI longitude ranges from [0, 360],should convert to [-180, 180]:
+                    df['longitude'] = (df['longitude'] - 180) % 360 - 180
                 elif file_extension in ['.csv']:
                     df = pd.read_csv(file_path)
                 else:
@@ -147,6 +152,7 @@ class FireWeatherMerger:
 
         # 'Time' in fwi_gdf is index so reset it to a column
         fwi_gdf.reset_index(inplace=True)
+
         fwi_gdf['time'] = pd.to_datetime(fwi_gdf['time']).dt.date
         fire_intensity_gdf['acq_date'] = pd.to_datetime(fire_intensity_gdf['acq_date']).dt.date
 
@@ -157,11 +163,11 @@ class FireWeatherMerger:
         fwi_gdf = fwi_gdf.set_index('date')
 
         merged_dfs = []
-
+        fwi_dates_set = set(fwi_gdf.index.unique()) # unique dates in fwi_gdf, convert to set to reduce runtime
         # Iterate over unique dates in fire_intensity_gdf and find the nearest neighbors in fwi_gdf
         # Iterate fire_intensity_gdf first because it has fewer unique dates whereas fwi_gdf has daily data
         for date in fire_intensity_gdf.index.unique():
-            if date in fwi_gdf.index.unique():
+            if date in fwi_dates_set:
                 fire_subset = FireWeatherMerger.ensure_geodataframe(fire_intensity_gdf.loc[[date]])
                 fwi_subset = FireWeatherMerger.ensure_geodataframe(fwi_gdf.loc[[date]])
                 # average fire intensity value for same fwi_lat, fwi_lon, Distance in the merged data
@@ -170,7 +176,13 @@ class FireWeatherMerger:
                 # merged_dfs.append(self.find_nearest_kdtree(fire_subset, fwi_subset, date))
                 merged_dfs.append(self.find_nearest_sjoin(fire_subset, fwi_subset, date, self.how))
 
-        self.merged_gdf = pd.concat(merged_dfs, ignore_index=True)
+        if len(merged_dfs) == 0:
+            raise ValueError("No common dates found between the two datasets.")
+        elif len(merged_dfs) == 1:
+            self.merged_gdf = merged_dfs[0]
+        else:
+            self.merged_gdf = pd.concat(merged_dfs, ignore_index=True)
+
 
         # fwi names are different for two fine_nearest methods
         if 'fwinx_nearest' in self.merged_gdf.columns:
@@ -219,21 +231,37 @@ class FireWeatherMerger:
 
 
 # Example usage:
-geo_bound_uk = (-9, 34, 32, 72)
-geo_bound_canada = (-141, 42, -52, 83)
+geo_bound_uk = (-10, 49, 2, 61)
+geo_bound_canada = (-141, 49, -52, 83) # actually 42 instead of 49
 geo_bound_usa = (-125, 24, -66, 49)
 geo_bound_eu = (-31, 34, 40, 72)
+year = 2013
+areas = ['uk', 'canada', 'usa', 'eu']
+# merge_methods = ['left', 'right']
+merge_methods = ['right']
+geo_bounds = zip(areas, [geo_bound_uk, geo_bound_canada, geo_bound_usa, geo_bound_eu])
 
-fwi_folder = '../../climada_petals/data/wildfire/copernicus_fwi/interpolated25_netcdf/'
-fire_intensity_folder = '../../climada_petals/data/wildfire/nasa_fire_intensity/'
+fwi_folder = f'../../climada_petals/data/wildfire/copernicus_fwi/interpolated25_netcdf/{year}/'
+fire_intensity_folder = f'../../climada_petals/data/wildfire/nasa_fire_intensity/{year}/'
 # fwi_folder = '../../climada_petals/data/wildfire/2001_fwi_fire_intensity_expriment/'
 # fire_intensity_folder = '../../climada_petals/data/wildfire/2001_fwi_fire_intensity_expriment/fire_intensity_csv/'
-save_path = '../../climada_petals/data/wildfire/output/'
+save_path = f'../../climada_petals/data/wildfire/output/{year}/'
 
-merger = FireWeatherMerger(geo_bound_eu, fwi_folder, fire_intensity_folder, plot_on_map=True,  how='right', save_path=save_path)
-merged_gdf = merger.run()
+for merge_method in merge_methods:
+    for area, geo_bound in geo_bounds:
+        start_time = time.time()
+        print(f"Processing data for {area} area, year: {year}, merge method: {merge_method}")
+        merger = FireWeatherMerger(geo_bound, fwi_folder, fire_intensity_folder, plot_on_map=False,  how=merge_method, save_path=save_path)
+        merged_gdf = merger.run()
 
-# convert date to string because GeoPackage driver does not support the datetime.date type directly
-merged_gdf['date'] = merged_gdf['date'].astype(str)
-merged_gdf.drop(columns=['index_right', 'scan', 'track', 'acq_time', 'version', 'type'], inplace=True)
-merged_gdf.to_file(os.path.join(save_path, 'intfwi_merged_eu_right_gdf'), driver='GPKG')
+        # convert date to string because GeoPackage driver does not support the datetime.date type directly
+        merged_gdf['date'] = merged_gdf['date'].astype(str)
+        # drop unnecessary columns or columns containing datetime object because GeoPackage driver does not support them
+        columns_to_drop = ['index_left', 'index_right', 'valid_time', 'step', 'scan', 'track', 'acq_time', 'version', 'type']
+        for column in columns_to_drop:
+            if column in merged_gdf.columns:
+                merged_gdf.drop(columns=[column], inplace=True)
+
+        merged_gdf.to_file(os.path.join(save_path, f'merged_{area}_{year}_{merge_method}_gdf'), driver='GPKG')
+        print(f"Saved merged GeoDataFrame to {save_path}merged_{area}_{year}_{merge_method}_gdf")
+        print(f"Execution time: {time.time() - start_time} seconds")
