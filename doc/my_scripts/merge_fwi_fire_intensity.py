@@ -231,14 +231,14 @@ class FireWeatherMerger:
 
 
 # Example usage:
+# min_lon, min_lat, max_lon, max_lat
 geo_bound_uk = (-10, 49, 2, 61)
 geo_bound_canada = (-141, 49, -52, 83) # actually 42 instead of 49
 geo_bound_usa = (-125, 24, -66, 49)
 geo_bound_eu = (-31, 34, 40, 72)
 year = 2013
 areas = ['uk', 'canada', 'usa', 'eu']
-# merge_methods = ['left', 'right']
-merge_methods = ['right']
+merge_methods = ['left', 'right']
 geo_bounds = zip(areas, [geo_bound_uk, geo_bound_canada, geo_bound_usa, geo_bound_eu])
 
 fwi_folder = f'../../climada_petals/data/wildfire/copernicus_fwi/interpolated25_netcdf/{year}/'
