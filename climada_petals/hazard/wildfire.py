@@ -610,7 +610,7 @@ class WildFire(Hazard):
                     temp = temp.drop(columns=['bright_ti4'])
 
                 df_firms = temp
-                df_firms = df_firms.reset_index()
+                # df_firms = df_firms.reset_index()
                 df_firms = df_firms.drop(columns=['index'])
 
         df_firms['iter_ev'] = np.ones(len(df_firms), bool)
