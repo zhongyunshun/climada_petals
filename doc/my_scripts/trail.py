@@ -87,3 +87,34 @@ axes[1].set_yticklabels(['Negative', 'Positive'])
 
 plt.tight_layout()
 plt.show()
+
+'''Feature Importance'''
+# Aggregating feature importances for each model
+logistic_feature_importance = pd.DataFrame(columns=['feature', 'importance'])
+xgb_feature_importance = pd.DataFrame(columns=['feature', 'importance'])
+
+for year in years:
+    logistic_feature_importance = logistic_feature_importance.append(results[year]['LogisticRegression']['feature_importance'], ignore_index=True)
+    xgb_feature_importance = xgb_feature_importance.append(results[year]['XGBClassifier']['feature_importance'], ignore_index=True)
+
+# Averaging feature importances
+avg_logistic_feature_importance = logistic_feature_importance.groupby('feature').mean().reset_index()
+avg_xgb_feature_importance = xgb_feature_importance.groupby('feature').mean().reset_index()
+
+# Plotting
+fig, axes = plt.subplots(1, 2, figsize=(18, 8))
+
+# Logistic Regression Feature Importance
+sns.barplot(data=avg_logistic_feature_importance, x='importance', y='feature', ax=axes[0], palette='Blues_d')
+axes[0].set_title('Logistic Regression Average Feature Importance (2001-2023)')
+axes[0].set_xlabel('Importance')
+axes[0].set_ylabel('Feature')
+
+# XGBClassifier Feature Importance
+sns.barplot(data=avg_xgb_feature_importance, x='importance', y='feature', ax=axes[1], palette='Blues_d')
+axes[1].set_title('XGBClassifier Average Feature Importance (2001-2023)')
+axes[1].set_xlabel('Importance')
+axes[1].set_ylabel('Feature')
+
+plt.tight_layout()
+plt.show()
