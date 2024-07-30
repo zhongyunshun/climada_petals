@@ -89,13 +89,17 @@ plt.tight_layout()
 plt.show()
 
 '''Feature Importance'''
-# Aggregating feature importances for each model
+# Aggregating feature importances for each model and getting absolute values
 logistic_feature_importance = pd.DataFrame(columns=['feature', 'importance'])
 xgb_feature_importance = pd.DataFrame(columns=['feature', 'importance'])
 
 for year in years:
-    logistic_feature_importance = logistic_feature_importance.append(results[year]['LogisticRegression']['feature_importance'], ignore_index=True)
-    xgb_feature_importance = xgb_feature_importance.append(results[year]['XGBClassifier']['feature_importance'], ignore_index=True)
+    logistic_feature_importance = pd.concat([logistic_feature_importance, results[year]['LogisticRegression']['feature_importance']], ignore_index=True)
+    xgb_feature_importance = pd.concat([xgb_feature_importance, results[year]['XGBClassifier']['feature_importance']], ignore_index=True)
+
+# Getting absolute values of importances
+logistic_feature_importance['importance'] = logistic_feature_importance['importance'].abs()
+xgb_feature_importance['importance'] = xgb_feature_importance['importance'].abs()
 
 # Averaging feature importances
 avg_logistic_feature_importance = logistic_feature_importance.groupby('feature').mean().reset_index()
@@ -118,3 +122,4 @@ axes[1].set_ylabel('Feature')
 
 plt.tight_layout()
 plt.show()
+
