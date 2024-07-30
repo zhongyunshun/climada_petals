@@ -1,5 +1,18 @@
 
-# Plotting with all years on x-axis and markers with ROC AUC values
+
+
+# Extracting data for plotting
+data = []
+for year in years:
+    for model, metrics in results[year].items():
+        data.append({'year': year, 'model': model, 'train_roc_auc': metrics['train_roc_auc'], 'test_roc_auc': metrics['test_roc_auc']})
+
+# Creating dataframe
+df = pd.DataFrame(data)
+
+'''ROC AUC over years for LogisticRegression and XGBClassifier'''
+
+# Plotting with y-axis range set from 0.85 to 1
 plt.figure(figsize=(18, 8))
 
 # Plot for LogisticRegression
@@ -15,8 +28,10 @@ for i in range(len(df[df['model'] == 'LogisticRegression'])):
 plt.title('Logistic Regression ROC AUC over Years')
 plt.xlabel('Year')
 plt.ylabel('ROC AUC')
+plt.ylim(0.85, 1)
 plt.legend()
 plt.xticks(years, rotation=45)
+plt.grid(True)
 
 # Plot for XGBClassifier
 plt.subplot(1, 2, 2)
@@ -31,8 +46,44 @@ for i in range(len(df[df['model'] == 'XGBClassifier'])):
 plt.title('XGBClassifier ROC AUC over Years')
 plt.xlabel('Year')
 plt.ylabel('ROC AUC')
+plt.ylim(0.85, 1)
 plt.legend()
 plt.xticks(years, rotation=45)
+plt.grid(True)
+
+plt.tight_layout()
+plt.show()
+
+'''Confusion Matrix'''
+
+import numpy as np
+
+# Summing confusion matrices for each model
+logistic_conf_matrix = np.zeros((2, 2))
+xgb_conf_matrix = np.zeros((2, 2))
+
+for year in years:
+    logistic_conf_matrix += np.array(results[year]['LogisticRegression']['confusion_matrix'])
+    xgb_conf_matrix += np.array(results[year]['XGBClassifier']['confusion_matrix'])
+
+# Plotting the confusion matrices
+fig, axes = plt.subplots(1, 2, figsize=(18, 8))
+
+# Logistic Regression Confusion Matrix
+sns.heatmap(logistic_conf_matrix, annot=True, fmt='g', ax=axes[0], cmap='Blues')
+axes[0].set_title('Logistic Regression Total Confusion Matrix (2001-2023)')
+axes[0].set_xlabel('Predicted')
+axes[0].set_ylabel('Actual')
+axes[0].set_xticklabels(['Negative', 'Positive'])
+axes[0].set_yticklabels(['Negative', 'Positive'])
+
+# XGBClassifier Confusion Matrix
+sns.heatmap(xgb_conf_matrix, annot=True, fmt='g', ax=axes[1], cmap='Blues')
+axes[1].set_title('XGBClassifier Total Confusion Matrix (2001-2023)')
+axes[1].set_xlabel('Predicted')
+axes[1].set_ylabel('Actual')
+axes[1].set_xticklabels(['Negative', 'Positive'])
+axes[1].set_yticklabels(['Negative', 'Positive'])
 
 plt.tight_layout()
 plt.show()
