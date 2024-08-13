@@ -1330,3 +1330,199 @@ def _fill_intensity_max(num_centr, ind, index_uni, lat_lon_cpy, fir_bright):
             brightness_ev[0, ind[idx]] = max(brightness_ev[0, ind[idx]], \
                          np.max(fir_bright[lat_lon_cpy == index_uni[idx]]))
     return brightness_ev
+
+
+class WildFireFuture(WildFire):
+    def set_proba_fire_seasons(self, n_fire_seasons=1, n_ignitions=None, fired_id_list=None,
+                               keep_all_fires=False):
+        """ Generate probabilistic fire seasons.
+
+        Fire seasons are created by running n probabilistic fires per year
+        which are then summarized into a probabilistic fire season by
+        calculating the max intensity at each centroid for each probabilistic
+        fire season.
+        Probabilistic fires are created using the logic described in the
+        method '_run_one_bushfire'.
+
+        The fire propagation matrix can be assigned separately, if that is not
+        done it will be generated on the available historic fire (seasons).
+
+        Intensities are drawn randomly from historic events. Thus, this method
+        requires at least one fire to draw from.
+
+        This method modifies self (climada.hazard.WildFire instance)
+        by adding probabilistic wildfire seasons.
+
+        Parameters
+        ----------
+        self : climada.Hazard.WildFire
+            must have calculated historic fire seasons before
+        n_fire_seasons : int, optional
+            number of fire seasons to be generated
+        n_ignitions : array, optional
+            [min, max]: min/max of uniform distribution to sample from,
+            in order to determin n_fire per probabilistic year set.
+            If none, min/max is taken from hist.
+        keep_all_fires : bool, optional
+            keep detailed list of all fires; default is False to save
+            memory.
+        """
+        # min/max for uniform distribtion to sample for n_fires per year
+        if n_ignitions is None:
+            ign_min = np.min(self.n_fires)
+            ign_max = np.max(self.n_fires)
+        else:
+            ign_min = n_ignitions[0]
+            ign_max = n_ignitions[1]
+
+        prob_fire_seasons = [] # list to save probabilistic fire seasons
+        # create probabilistic fire seasons
+        for i in range(n_fire_seasons):
+            n_ign = np.random.randint(ign_min, ign_max)
+            LOGGER.info('Setting up probabilistic fire season with %s fires.',\
+                        str(n_ign))
+            prob_fire_seasons.append(self._set_one_proba_fire_season(n_ign, seed=i, fired_id_list=fired_id_list))
+
+        if keep_all_fires:
+            self.prob_fire_seasons = prob_fire_seasons
+
+        # save
+        # Following values are defined for each fire
+        new_event_id = np.arange(np.max(self.event_id)+1, np.max(self.event_id)+n_fire_seasons+1)
+        self.event_id = np.concatenate((self.event_id, new_event_id), axis=None)
+        new_event_name = list(map(str, new_event_id))
+        self.event_name = np.append(self.event_name, new_event_name)
+        new_orig = np.zeros(len(new_event_id), bool)
+        self.orig = np.concatenate((self.orig, new_orig))
+        self._set_frequency()
+
+        # Following values are defined for each event and centroid
+        new_intensity = sparse.lil_matrix((np.zeros([n_fire_seasons, len(self.centroids.lat)])))
+        for idx, wf in enumerate(prob_fire_seasons):
+            new_intensity[idx] = sparse.csr_matrix(wf).max(0)
+        new_intensity = new_intensity.tocsr()
+        self.intensity = sparse.vstack([self.intensity, new_intensity],
+                                       format='csr')
+        self.fraction = self.intensity.copy()
+        self.fraction.data.fill(1.0)
+
+
+    def _set_one_proba_fire_season(self, n_ignitions, seed=8, fired_id_list=None):
+        """ Generate a probabilistic fire season.
+
+        Parameters
+        ----------
+        n_ignitions : int
+            number of wild fires for the season
+        seed : int
+
+        Returns
+        -------
+        proba_fires : lil_matrix
+            probablistic hazard
+        """
+        np.random.seed(seed)
+        proba_fires = sparse.lil_matrix(np.zeros((n_ignitions, self.centroids.size)))
+        for i in range(n_ignitions):
+            if np.mod(i, 10) == 0:
+                LOGGER.info('Created %s fires', str(i))
+            centr_burned = self._run_one_fire(fired_id=fired_id_list[i] if fired_id_list is not None else None)
+            proba_fires[i, :] = self._set_proba_intensity(centr_burned)
+
+        return proba_fires
+
+    def _run_one_fire(self, fired_id=None):
+        """ Run one bushfire on a fire propagation probability matrix.
+            If the matrix is not defined, it is constructed using past fire
+            experience -> a fire can only propagate on centroids that burned
+            in the past including a exponentially blurred range around the
+            historic fires.
+            The ignition point of a fire can be on any centroid, on which
+            the propagation probability equals 1. The fire is then propagated
+            with a cellular automat.
+            If the fire has not stopped burning after a defined number of
+            iterations (self.ProbaParams.max_it_propa, default=500'000),
+            the propagation is interrupted.
+
+            Propagation rules:
+                1. select a burning centroid (at the start there is only one,
+                    afterwards select one randomly)
+                2. every adjunct centroid to the selected centroid can start
+                    burning with a probability of the overall propagation
+                    probability (self.ProbaParams.prop_proba) times the
+                    centroid specific propagation probability (which is
+                    defined on the fire_propa_matrix).
+                3. the selected burning centroid becomes an ember centroid
+                    which can not start burning again and thus no longer
+                    propagate any fire.
+            Properties from centr_burned:
+                0 = unburned centroid
+                1 = burning centroid
+                2 = ember centroid
+            Stop criteria: the propagation stops when no centroid is burning.
+            The initial version of this code was inspired by
+            https://scipython.com/blog/the-forest-fire-model/
+
+        Parameters
+        ----------
+        self : climada.hazard.WildFire instance
+            needs to contain information of at least 1 historic wildfire
+
+        Returns
+        -------
+        centr_burned : np.array
+            array indicating which centroids burned
+        """
+        # set fire propagation matrix if not already defined
+        if not hasattr(self.centroids, 'fire_propa_matrix'):
+            self._set_fire_propa_matrix()
+
+        # Ignation only at centroids that burned in the past
+        pos_centr = np.argwhere(self.centroids.fire_propa_matrix.reshape( \
+            len(self.centroids.lat)) == 1)[:, 1]
+
+        LOGGER.debug('Start ignition.')
+        # Random selection of ignition centroid
+        for _ in range(self.centroids.size):
+            if fired_id is not None:
+                centr = fired_id
+            else:
+                centr = np.random.choice(pos_centr)
+            centr_ix = int(centr/self.centroids.shape[1])
+            centr_iy = centr%self.centroids.shape[1]
+            centr_ix = max(0, centr_ix)
+            centr_ix = min(self.centroids.shape[0]-1, centr_ix)
+            centr_iy = max(0, centr_iy)
+            centr_iy = min(self.centroids.shape[1]-1, centr_iy)
+            centr = centr_ix*self.centroids.shape[1] + centr_iy
+            if 1 <= centr_ix < self.centroids.shape[0] - 1 and \
+            1 <= centr_iy < self.centroids.shape[1] - 1:
+                break
+
+        LOGGER.debug('Propagate fire.')
+        centr_burned = np.zeros((self.centroids.shape), int)
+        centr_burned[centr_ix, centr_iy] = 1
+        # Iterate the fire according to the propagation rules
+        count_it = 0
+        while np.any(centr_burned == 1) and count_it < self.ProbaParams.max_it_propa:
+            count_it += 1
+            # Select randomly one of the burning centroids
+            # and propagate throught its neighborhood
+            burned = np.argwhere(centr_burned == 1)
+            if len(burned) > 1:
+                centr_ix, centr_iy = burned[np.random.randint(0, len(burned))]
+            elif len(burned) == 1:
+                centr_ix, centr_iy = burned[0]
+            if not count_it % (self.ProbaParams.max_it_propa-1):
+                LOGGER.warning('Fire propagation not converging at iteration %s.',
+                               count_it)
+            if 1 <= centr_ix < self.centroids.shape[0]-1 and \
+            1 <= centr_iy < self.centroids.shape[1]-1 and \
+            self.centroids.on_land[(centr_ix*self.centroids.shape[1] + centr_iy)]:
+                centr_burned = self._fire_propagation_on_matrix(self.centroids.shape, \
+                    self.centroids.fire_propa_matrix, self.ProbaParams.prop_proba, \
+                    centr_ix, centr_iy, centr_burned, np.random.random(500))
+            else:
+                break  # to avoid non-convergence
+
+        return centr_burned
